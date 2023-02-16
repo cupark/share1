@@ -1,115 +1,76 @@
 import pyaudio
+import queue
+import threading
+import time
 import numpy as np
 import librosa
 
-# 설정값
-CHUNK_SIZE = 1024       # 오디오 스트림에서 한 번에 읽어들일 샘플 수
-SAMPLE_RATE = 44100     # 샘플링 주파수
-N_MFCC = 20             # 추출할 MFCC 계수의 수
-HOP_LENGTH = 512        # MFCC 계산 시 사용할 윈도우 크기
+# 파라미터 설정
+CHUNK = 1024
+FORMAT = pyaudio.paFloat32
+CHANNELS = 1
+RATE = 44100
+HOP_LENGTH = 512
+N_MFCC = 13
+N_FRAMES = 43
+BUFFER_LENGTH_SEC = 2
+BUFFER_LENGTH = int(RATE * BUFFER_LENGTH_SEC / HOP_LENGTH) * HOP_LENGTH
 
-# 버퍼 초기화
-buffer = []
-buffer_samples = 0
+# 버퍼 큐 초기화
+buffer_queue = queue.Queue(maxsize=int(BUFFER_LENGTH/CHUNK))
 
-# PyAudio 오디오 스트림 초기화
-p = pyaudio.PyAudio()
-stream = p.open(format=pyaudio.paInt16, channels=1, rate=SAMPLE_RATE, input=True, frames_per_buffer=CHUNK_SIZE)
+# 스트림 콜백 함수
+def stream_callback(in_data, frame_count, time_info, status):
+    # 스트림 데이터를 큐에 추가
+    buffer_queue.put(in_data)
+    return (in_data, pyaudio.paContinue)
 
-while True:
-    # 스트림에서 데이터 읽어들이기
-    data = stream.read(CHUNK_SIZE)
-    samples = np.frombuffer(data, dtype=np.int16)
-    
-    # 버퍼에 데이터 추가
-    buffer.append(samples)
-    buffer_samples += len(samples)
-    
-    # 2초간 데이터를 쌓으면 MFCC 계산
-    if buffer_samples >= SAMPLE_RATE * 2:
-        # 버퍼에서 모든 오디오 데이터 추출
-        audio = np.concatenate(buffer, axis=0)
+# MFCC 계산 함수
+def calculate_mfcc(buffer):
+    signal = np.frombuffer(buffer, dtype=np.float32)
+    mfccs = librosa.feature.mfcc(signal, sr=RATE, hop_length=HOP_LENGTH, n_mfcc=N_MFCC, n_fft=HOP_LENGTH*N_FRAMES)
+    mfccs_delta = librosa.feature.delta(mfccs)
+    mfccs_delta2 = librosa.feature.delta(mfccs, order=2)
+    return np.concatenate((mfccs, mfccs_delta, mfccs_delta2))
+
+# MFCC 처리 함수
+def process_mfcc(buffer_queue):
+    while True:
+        # 버퍼 큐에서 2초간의 데이터 가져오기
+        buffer = b""
+        while buffer_queue.qsize() < int(BUFFER_LENGTH/CHUNK):
+            time.sleep(0.1)
+        for i in range(int(BUFFER_LENGTH/CHUNK)):
+            buffer += buffer_queue.get()
         # MFCC 계산
-        mfccs = librosa.feature.mfcc(y=audio, sr=SAMPLE_RATE, n_mfcc=N_MFCC, hop_length=HOP_LENGTH)
-        # 계산 결과 출력
-        print("MFCC shape: ", mfccs.shape)
-        # 버퍼 초기화
-        buffer = []
-        buffer_samples = 0
+        mfccs = calculate_mfcc(buffer)
+        # 결과 출력
+        print(mfccs)
 
-# PyAudio 스트림 닫기
+# PyAudio 초기화
+p = pyaudio.PyAudio()
+
+# 입력 스트림 열기
+stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                frames_per_buffer=CHUNK,
+                stream_callback=stream_callback)
+
+# MFCC 처리 스레드 시작
+mfcc_thread = threading.Thread(target=process_mfcc, args=(buffer_queue,))
+mfcc_thread.daemon = True
+mfcc_thread.start()
+
+# 입력 스트림 시작
+stream.start_stream()
+
+# 입력 스트림 종료 대기
+while stream.is_active():
+    time.sleep(0.1)
+
+# PyAudio 종료
 stream.stop_stream()
 stream.close()
 p.terminate()
-
-
-
-
-
-
-
-
-
-
-import pyaudio
-
-CHUNK_SIZE = 2048
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
-RATE = 22050
-
-audio_stream = pyaudio.PyAudio().open(
-    format=FORMAT,
-    channels=CHANNELS,
-    rate=RATE,
-    input=True,
-    frames_per_buffer=CHUNK_SIZE
-)
-
-while True:
-    # 스트림에서 데이터를 읽어들이기
-    audio_data = audio_stream.read(CHUNK_SIZE)
-    # 입력받은 음성 데이터를 전처리하기
-    preprocessed_audio = preprocess_audio_stream(audio_data)
-    # SVM 모델에 입력하여 분류하기
-    predicted_label = svm_model.predict(preprocessed_audio)
-    print(predicted_label)
-
-
-
-import librosa
-
-def preprocess_audio_stream(audio_stream):
-    # 입력된 음성 데이터를 읽어들이고 MFCC 특징 벡터 추출
-    mfccs = librosa.feature.mfcc(y=audio_stream, sr=22050, n_mfcc=40)
-    # 데이터를 2차원 배열로 변환
-    mfccs = mfccs.T
-    return mfccs
-
-
-
-def draw_chart_mfccs(mfccs, sample_rate, hop_length):
-    plt.figure(figsize=FIG_SIZE)
-    librosa.display.specshow(mfccs, sr=sample_rate, hop_length=hop_length)
-    plt.xlabel("Time")
-    plt.ylabel("MFCC Coefficients")
-    plt.colorbar()
-    plt.title("MFCCS")
-    
-    
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-
-def update_plot(frame, mfccs, sample_rate, hop_length):
-    plt.cla()  # clear current axis
-    librosa.display.specshow(mfccs[:, :frame], sr=sample_rate, hop_length=hop_length, x_axis='time')
-    plt.xlabel("Time")
-    plt.ylabel("MFCC Coefficients")
-    plt.colorbar()
-    plt.title("MFCCS")
-
-def animate_mfccs(mfccs, sample_rate, hop_length):
-    fig = plt.figure(figsize=FIG_SIZE)
-    ani = animation.FuncAnimation(fig, update_plot, fargs=(mfccs, sample_rate, hop_length), frames=mfccs.shape[1], repeat=False)
-    plt.show()
-
