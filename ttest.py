@@ -42,3 +42,21 @@ def draw_chart_mfccs(mfccs, sample_rate, hop_length):
     plt.ylabel("MFCC Coefficients")
     plt.colorbar()
     plt.title("MFCCS")
+    
+    
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+def update_plot(frame, mfccs, sample_rate, hop_length):
+    plt.cla()  # clear current axis
+    librosa.display.specshow(mfccs[:, :frame], sr=sample_rate, hop_length=hop_length, x_axis='time')
+    plt.xlabel("Time")
+    plt.ylabel("MFCC Coefficients")
+    plt.colorbar()
+    plt.title("MFCCS")
+
+def animate_mfccs(mfccs, sample_rate, hop_length):
+    fig = plt.figure(figsize=FIG_SIZE)
+    ani = animation.FuncAnimation(fig, update_plot, fargs=(mfccs, sample_rate, hop_length), frames=mfccs.shape[1], repeat=False)
+    plt.show()
+
