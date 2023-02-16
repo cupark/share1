@@ -32,3 +32,13 @@ def preprocess_audio_stream(audio_stream):
     # 데이터를 2차원 배열로 변환
     mfccs = mfccs.T
     return mfccs
+
+
+
+def draw_chart_mfccs(mfccs, sample_rate, hop_length):
+    plt.figure(figsize=FIG_SIZE)
+    librosa.display.specshow(mfccs, sr=sample_rate, hop_length=hop_length)
+    plt.xlabel("Time")
+    plt.ylabel("MFCC Coefficients")
+    plt.colorbar()
+    plt.title("MFCCS")
