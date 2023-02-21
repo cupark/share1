@@ -1,29 +1,39 @@
 import pyaudio
 import numpy as np
-import librosa
-import joblib
-from sklearn import svm
 
-# SVM 모델 로드
-svm_model = joblib.load("svm_model.pkl")
+# Define constants
+CHUNK_SIZE = 1024
+FORMAT = pyaudio.paFloat32
+CHANNELS = 1
+RATE = 44100
 
-# pyaudio 객체 생성
-CHUNK = 1024
-RATE = 8000
+# Define the stream callback function
+def callback(in_data, frame_count, time_info, status):
+    # Do some processing on the incoming data
+    data = np.frombuffer(in_data, dtype=np.float32)
+
+    # Do some analysis or processing on the data here
+
+    # Return the processed data to the stream
+    return data.tobytes(), pyaudio.paContinue
+
+# Open the audio stream with the callback function
 p = pyaudio.PyAudio()
+stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                frames_per_buffer=CHUNK_SIZE,
+                stream_callback=callback)
 
-# 마이크로부터 데이터 스트림 받아오기
-stream = p.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
+# Start the stream
+stream.start_stream()
 
-# 데이터 분류
-while True:
-    # 스트림에서 데이터 읽어오기
-    data = stream.read(CHUNK)
-    # 읽어온 데이터를 numpy 배열로 변환
-    samples = np.frombuffer(data, dtype=np.int16)
-    # MFCC 특징 벡터 추출
-    mfcc = librosa.feature.mfcc(samples.astype(float), sr=RATE)
-    # SVM 모델을 사용하여 분류
-    label = svm_model.predict(mfcc.T)
-    # 분류 결과 출력
-    print(label)
+# Keep the stream open until user interrupts
+while stream.is_active():
+    try:
+        input()
+    except KeyboardInterrupt:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
