@@ -1,33 +1,34 @@
-import pyaudio
 import librosa
 import librosa.display
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import matplotlib.animation as animation
+import numpy as np
 
-# PyAudio 객체를 생성합니다.
-p = pyaudio.PyAudio()
+# wav 파일 로드
+audio_file = 'audio.wav'
+y, sr = librosa.load(audio_file, sr=None, mono=True, duration=2)
 
-# 오디오 스트림을 엽니다.
-stream = p.open(format=pyaudio.paFloat32, channels=1, rate=44100, input=True)
+# mfcc 추출
+mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
 
-# 그래프를 초기화합니다.
-fig, ax = plt.subplots()
-spec = ax.imshow(np.zeros((128, 128)), cmap='viridis', origin='lower', aspect='auto')
+# figure 설정
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.set(xlim=(0, mfccs.shape[1]), ylim=(-100, 100))
+plt.xlabel("Frame")
+plt.ylabel("MFCC Coefficients")
 
-# 스펙트로그램을 계산합니다.
-def update(frame):
-    y = np.frombuffer(stream.read(1024), dtype=np.float32)
-    spec.set_data(librosa.power_to_db(librosa.feature.melspectrogram(y=y, sr=44100), ref=np.max))
-    return spec
+# 그래프 초기화
+line, = ax.plot([], [], lw=2)
 
-# 애니메이션을 생성합니다.
-ani = FuncAnimation(fig, update, interval=50)
+# 애니메이션 함수
+def animate(frame):
+    x = np.arange(0, frame+1)
+    y = mfccs[:, :frame+1]
+    line.set_data(x, y)
+    return line,
 
-# 애니메이션을 화면에 출력합니다.
+# 애니메이션 객체 생성
+anim = animation.FuncAnimation(fig, animate, frames=mfccs.shape[1], interval=20)
+
+# 애니메이션 실행
 plt.show()
-
-# 오디오 스트림을 닫습니다.
-stream.stop_stream()
-stream.close()
-p.terminate()
